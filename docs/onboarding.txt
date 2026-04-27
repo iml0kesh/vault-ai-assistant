@@ -1,0 +1,130 @@
+# onboarding.txt
+
+Vault Application Onboarding Guide
+
+Purpose:
+This document explains how to onboard a VM-based application to HashiCorp Vault using AppRole authentication.
+
+Use Case:
+
+* Application runs on VM
+* Application needs secure secret retrieval
+* Application cannot use Kubernetes authentication
+* Machine-to-machine authentication required
+
+Recommended Auth Method:
+VM-based applications should use AppRole authentication.
+
+Required Consumer Inputs:
+
+* Application Name
+* Environment (dev, qa, prod)
+* Namespace
+* Secret Type
+* Vault Path
+* Auth Method
+
+Onboarding Workflow:
+
+Step 1: Validate Request
+
+* Verify approvals exist
+* Confirm naming standards
+* Confirm namespace exists
+* Validate secret path
+
+Step 2: Create Vault Policy
+Example:
+
+path "kv/data/payment-service/*" {
+capabilities = ["read"]
+}
+
+Policy Naming Convention: <application-name>-policy
+
+Example:
+payment-service-policy
+
+Step 3: Create AppRole
+Command:
+
+vault write auth/approle/role/payment-service 
+token_policies="payment-service-policy" 
+token_ttl=1h 
+token_max_ttl=4h
+
+Step 4: Generate Role ID
+Command:
+
+vault read auth/approle/role/payment-service/role-id
+
+Output:
+role_id = xxxxxxxx-xxxx-xxxx
+
+Step 5: Generate Secret ID
+Command:
+
+vault write -f auth/approle/role/payment-service/secret-id
+
+Output:
+secret_id = xxxxxxxx-xxxx-xxxx
+
+Step 6: Share Credentials Securely
+Share:
+
+* role_id
+* secret_id
+* Vault URL
+* Namespace
+
+Common Errors:
+
+Error: Permission Denied
+Cause:
+
+* Wrong policy
+* Missing read capability
+* Incorrect Vault path
+
+Resolution:
+
+* Verify policy mapping
+* Validate capabilities
+
+Error: Invalid Secret ID
+Cause:
+
+* Secret ID expired
+* Secret ID already consumed
+
+Resolution:
+
+* Generate new Secret ID
+
+FAQ:
+
+Question: Which applications should use AppRole?
+Answer: VM-based applications.
+
+Question: Is AppRole suitable for Kubernetes?
+Answer: No. Use Kubernetes authentication.
+
+Question: Can AppRole rotate automatically?
+Answer: Yes. Secret IDs can be rotated.
+
+Related Keywords:
+
+* Vault onboarding
+* AppRole
+* VM authentication
+* Secret retrieval
+* Policy creation
+* Vault access
+
+Sample User Questions:
+
+* How do I onboard an application to Vault?
+* Which auth method should I use for VM application?
+* How does AppRole work?
+* How do I generate role_id and secret_id?
+* What policy is required for Vault onboarding?
