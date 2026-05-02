@@ -1,0 +1,118 @@
+VAULT AWS IAM AUTHENTICATION - COMPLETE GUIDE
+
+PURPOSE
+AWS IAM authentication allows AWS workloads such as EC2 instances, Lambda functions,
+and ECS tasks to authenticate with HashiCorp Vault using their native AWS IAM identity.
+No hardcoded credentials are required.
+
+WHEN TO USE AWS IAM AUTH
+- Application runs on AWS EC2 instance
+- AWS Lambda function needs Vault secrets
+- AWS ECS or Fargate container workload
+- Any AWS-hosted workload with an IAM role
+
+WHEN NOT TO USE AWS IAM AUTH
+- Do not use AWS IAM Auth for VM/bare-metal workloads (use AppRole instead)
+- Do not use AWS IAM Auth for Kubernetes pods (use Kubernetes Auth instead)
+- Do not use AWS IAM Auth for GitHub Actions (use GitHub Auth instead)
+
+HOW AWS IAM AUTH WORKS
+1. AWS workload has an IAM role attached
+2. Workload calls AWS STS GetCallerIdentity API to prove its identity
+3. Workload sends the signed STS request to Vault
+4. Vault calls AWS STS to verify the IAM identity
+5. Vault checks if the IAM role matches a configured Vault role
+6. Vault returns a Vault token with attached policies
+7. Workload uses the Vault token to read secrets
+
+AWS IAM AUTH ONBOARDING WORKFLOW
+
+Step 1: Enable AWS Auth Method
+Command: vault auth enable aws
+Note: Only needed once per Vault cluster.
+
+Step 2: Configure AWS Auth
+Command:
+vault write auth/aws/config/client \
+  access_key=<AWS_ACCESS_KEY> \
+  secret_key=<AWS_SECRET_KEY> \
+  region=us-east-1
+
+Note: In production, use an IAM role for Vault server instead of static keys.
+
+Step 3: Create Vault Policy
+Example:
+path "kv/data/myapp/*" {
+  capabilities = ["read"]
+}
+Command: vault policy write myapp-aws-policy myapp-aws-policy.hcl
+
+Step 4: Create AWS Vault Role
+Command:
+vault write auth/aws/role/myapp-ec2-role \
+  auth_type=iam \
+  bound_iam_principal_arn=arn:aws:iam::123456789012:role/MyAppRole \
+  policies=myapp-aws-policy \
+  ttl=1h
+
+Parameters explained:
+- auth_type: Use "iam" for IAM-based auth
+- bound_iam_principal_arn: The AWS IAM role ARN allowed to authenticate
+- policies: Vault policy to attach
+- ttl: Token lifetime
+
+Step 5: EC2 Instance Authenticates
+The EC2 instance authenticates using its attached IAM role.
+Command:
+vault login -method=aws role=myapp-ec2-role
+
+Vault validates the IAM identity and returns a token.
+
+REQUIRED INPUTS FOR AWS IAM AUTH ONBOARDING
+- Application Name
+- AWS Account ID
+- AWS IAM Role ARN
+- AWS Region
+- Environment (dev / qa / prod)
+- Vault Namespace
+- Secret Path
+- Required Capabilities
+
+AWS IAM AUTH BEST PRACTICES
+- Always use IAM roles, never static AWS access keys for EC2 workloads
+- Use least privilege IAM policies on the AWS side as well
+- Restrict bound_iam_principal_arn to specific IAM roles (not wildcard)
+- Use short TTL tokens (1h recommended)
+- Enable Vault audit logging to monitor AWS auth events
+- Separate Vault roles per application and per environment
+- Rotate Vault server AWS credentials if static keys are used
+
+AWS IAM AUTH POLICY EXAMPLES
+
+Basic read policy:
+path "kv/data/myapp/*" {
+  capabilities = ["read", "list"]
+}
+
+Oracle DB policy for AWS app:
+path "oracle/creds/myapp-db-role" {
+  capabilities = ["read"]
+}
+
+TROUBLESHOOTING AWS IAM AUTH
+
+Error: IAM role not authorized
+Cause: IAM role ARN does not match bound_iam_principal_arn
+Fix: Verify exact ARN and update Vault role
+
+Error: STS validation failed
+Cause: Vault cannot reach AWS STS endpoint
+Fix: Check Vault server network access and AWS credentials config
+
+Error: Permission denied after authentication
+Cause: Policy not correctly attached to Vault role
+Fix: vault policy read myapp-aws-policy
+
+KEYWORDS
+aws iam auth, vault aws, ec2 authentication, iam role vault, aws workload vault,
+lambda vault, ecs vault, sts getcalleridentity, aws auth method

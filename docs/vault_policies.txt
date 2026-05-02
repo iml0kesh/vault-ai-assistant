@@ -1,0 +1,157 @@
+VAULT POLICIES - COMPLETE GUIDE
+
+PURPOSE
+Vault policies define what secrets an authenticated identity can access and what
+operations they can perform. Every token in Vault has one or more policies attached.
+Without a policy, access is denied by default.
+
+VAULT POLICY BASICS
+- Policies are written in HCL (HashiCorp Configuration Language)
+- Policies are attached to auth methods (AppRole, Kubernetes, AWS IAM, GitHub)
+- Default behavior: DENY everything not explicitly allowed
+- Vault follows least privilege by default
+
+POLICY CAPABILITIES
+read    - Read the value of a secret
+list    - List secret paths (see folder structure, not values)
+create  - Create a new secret
+update  - Update an existing secret
+delete  - Delete a secret
+patch   - Partially update a secret
+sudo    - Allows access to root-protected paths (rarely used)
+deny    - Explicitly deny access (overrides all other capabilities)
+
+POLICY NAMING CONVENTION
+Format: <application-name>-<environment>-policy
+Examples:
+- payment-service-prod-policy
+- user-service-dev-policy
+- reporting-app-qa-policy
+
+SECRET PATH FORMAT BY SECRET ENGINE
+
+KV v2 Paths (note: must include /data/ in policy path):
+  path "kv/data/myapp/*" { capabilities = ["read"] }
+
+Oracle DB Paths:
+  path "database/creds/myapp-db-role" { capabilities = ["read"] }
+
+LDAP Static Cred Paths:
+  path "ldap/static-cred/myapp-ldap-role" { capabilities = ["read"] }
+
+COMMON POLICY EXAMPLES
+
+1. Basic Application Read Policy (KV):
+path "kv/data/payment-service/*" {
+  capabilities = ["read", "list"]
+}
+
+2. Oracle DB Credential Policy:
+path "database/creds/payment-db-role" {
+  capabilities = ["read"]
+}
+
+3. LDAP Credential Policy:
+path "ldap/static-cred/payment-ldap-role" {
+  capabilities = ["read"]
+}
+
+4. Multi-Engine Policy (application needs KV + Oracle):
+path "kv/data/payment-service/*" {
+  capabilities = ["read", "list"]
+}
+path "database/creds/payment-db-role" {
+  capabilities = ["read"]
+}
+
+5. Vault Ops Admin Policy:
+path "kv/*" {
+  capabilities = ["read", "list", "create", "update", "delete"]
+}
+path "database/*" {
+  capabilities = ["read", "list", "create", "update", "delete"]
+}
+path "auth/*" {
+  capabilities = ["read", "list", "create", "update", "delete"]
+}
+
+6. Read-Only List Policy (for browsing paths only):
+path "kv/metadata/payment-service/*" {
+  capabilities = ["list"]
+}
+
+POLICY CREATION WORKFLOW
+
+Step 1: Create policy HCL file
+Example filename: payment-service-prod-policy.hcl
+
+Step 2: Write policy to Vault
+Command: vault policy write payment-service-prod-policy payment-service-prod-policy.hcl
+
+Step 3: Verify policy written
+Command: vault policy read payment-service-prod-policy
+
+Step 4: List all policies
+Command: vault policy list
+
+Step 5: Attach policy to auth method
+For AppRole:
+vault write auth/approle/role/payment-service token_policies="payment-service-prod-policy"
+
+For Kubernetes:
+vault write auth/kubernetes/role/payment-role policies="payment-service-prod-policy"
+
+POLICY BEST PRACTICES
+- Always follow least privilege - only grant what the application actually needs
+- Never use wildcard (*) on root paths in production
+- Grant read capability only unless create/update is explicitly required
+- Separate policies per application - never share one policy across multiple apps
+- Separate policies per environment (dev/qa/prod should have different policies)
+- Name policies clearly using the naming convention
+- Document each policy with comments inside the HCL file
+- Review policies quarterly as part of access review
+- Never grant sudo capability to application policies
+- Use deny explicitly when you need to restrict a sub-path within a wildcard grant
+
+POLICY TROUBLESHOOTING
+
+Error: Permission denied
+Cause 1: Policy not attached to the auth role
+Fix: vault read auth/approle/role/myapp to check token_policies
+
+Cause 2: Wrong path in policy (KV v2 missing /data/)
+Fix: Ensure policy path is "kv/data/myapp/*" not "kv/myapp/*"
+
+Cause 3: Missing capability (trying to list but only read granted)
+Fix: Add "list" to capabilities in policy
+
+Cause 4: Policy uses wrong secret engine path
+Fix: Verify path format per secret engine (kv/data vs database/creds vs ldap/static-cred)
+
+Error: Token has no policies
+Cause: AppRole role or Kubernetes role created without policy attached
+Fix: Recreate auth role with token_policies parameter set
+
+HOW TO DEBUG POLICY ISSUES
+1. Check what policies the token has:
+   vault token lookup
+
+2. Read the policy content:
+   vault policy read <policy-name>
+
+3. Check auth role configuration:
+   vault read auth/approle/role/<role-name>
+
+4. Test policy with path capability check:
+   vault token capabilities kv/data/myapp/config
+
+VAULT NAMESPACE IN POLICIES
+If using Vault namespaces, policies are namespace-scoped.
+Policy in namespace "finance":
+vault namespace create finance
+vault policy write -namespace=finance payment-policy payment-policy.hcl
+
+KEYWORDS
+vault policy, capabilities, permission denied, access control, vault authorization,
+least privilege, hcl policy, policy path, token policies, vault policy write,
+vault policy read, vault policy list, policy best practices

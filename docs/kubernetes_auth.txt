@@ -1,0 +1,153 @@
+VAULT KUBERNETES AUTHENTICATION - COMPLETE GUIDE
+
+PURPOSE
+Kubernetes authentication allows pods and containers running inside a Kubernetes cluster
+to authenticate with HashiCorp Vault using their native Kubernetes service account tokens.
+No hardcoded credentials are needed.
+
+WHEN TO USE KUBERNETES AUTH
+- Application runs inside a Kubernetes pod
+- Microservice architecture on Kubernetes
+- Container-based workloads
+- Kubernetes-native applications
+- Any workload with a Kubernetes service account
+
+WHEN NOT TO USE KUBERNETES AUTH
+- Do not use Kubernetes Auth for VM-based applications (use AppRole instead)
+- Do not use Kubernetes Auth for AWS-only workloads (use AWS IAM Auth instead)
+- Do not use Kubernetes Auth for GitHub Actions (use GitHub Auth instead)
+
+HOW KUBERNETES AUTH WORKS
+1. Pod has a Kubernetes service account assigned
+2. Kubernetes automatically mounts a JWT service account token inside the pod
+3. Pod sends the JWT token to Vault
+4. Vault calls the Kubernetes API to validate the token
+5. Vault checks if the service account and namespace match a configured Vault role
+6. Vault returns a Vault token with attached policies
+7. Pod uses the Vault token to read secrets
+
+KUBERNETES AUTH ONBOARDING WORKFLOW
+
+Step 1: Enable Kubernetes Auth Method
+Command: vault auth enable kubernetes
+Note: Only needed once per Vault cluster.
+
+Step 2: Configure Kubernetes Auth
+Vault needs to know where your Kubernetes cluster API is.
+Command:
+vault write auth/kubernetes/config \
+  kubernetes_host=https://<KUBERNETES_API_SERVER>:6443 \
+  token_reviewer_jwt=<SERVICE_ACCOUNT_JWT> \
+  kubernetes_ca_cert=@/path/to/ca.crt
+
+Parameters:
+- kubernetes_host: Kubernetes API server address
+- token_reviewer_jwt: Service account token for token review
+- kubernetes_ca_cert: Kubernetes cluster CA certificate
+
+Step 3: Create Vault Policy for the Application
+Example:
+path "kv/data/payment-service/*" {
+  capabilities = ["read"]
+}
+Command: vault policy write payment-policy payment-policy.hcl
+
+Step 4: Create Kubernetes Vault Role
+This maps a Kubernetes service account to a Vault policy.
+Command:
+vault write auth/kubernetes/role/payment-role \
+  bound_service_account_names=payment-sa \
+  bound_service_account_namespaces=payments \
+  policies=payment-policy \
+  ttl=1h
+
+Parameters explained:
+- bound_service_account_names: Kubernetes service account name allowed to authenticate
+- bound_service_account_namespaces: Kubernetes namespace where the service account lives
+- policies: Vault policy attached to this role
+- ttl: Token lifetime
+
+Step 5: Create Kubernetes Service Account
+Command: kubectl create serviceaccount payment-sa -n payments
+
+Step 6: Assign Service Account to Pod
+In the pod spec or deployment YAML:
+spec:
+  serviceAccountName: payment-sa
+
+Step 7: Pod Authenticates with Vault
+Pod reads its own service account token from:
+/var/run/secrets/kubernetes.io/serviceaccount/token
+
+Pod sends the token to Vault:
+vault write auth/kubernetes/login \
+  role=payment-role \
+  jwt=<service_account_token>
+
+Vault returns a Vault token. Pod uses this token to read secrets.
+
+REQUIRED INPUTS FOR KUBERNETES AUTH ONBOARDING
+- Application Name (example: payment-service)
+- Kubernetes Namespace (example: payments)
+- Kubernetes Service Account Name (example: payment-sa)
+- Environment (dev / qa / prod)
+- Vault Namespace
+- Secret Path (example: kv/data/payment-service/)
+- Required Capabilities (read / list)
+- Token TTL preference
+
+KUBERNETES AUTH BEST PRACTICES
+- Always create a dedicated service account per application (do not use default service account)
+- Restrict bound_service_account_namespaces to the specific namespace only
+- Never use wildcard (*) for service account names or namespaces in production
+- Use Vault Agent Sidecar or Vault Secrets Operator to inject secrets automatically
+- Use short TTL tokens (1h recommended)
+- Enable Vault audit logging to monitor pod authentication events
+- Separate Vault roles per application and per environment
+- Do not share service accounts between different applications
+- Use Kubernetes RBAC to restrict which pods can use a service account
+
+VAULT AGENT SIDECAR INJECTION (KUBERNETES)
+Vault Agent can be injected as a sidecar to handle authentication automatically.
+Annotation example on pod:
+vault.hashicorp.com/agent-inject: "true"
+vault.hashicorp.com/role: "payment-role"
+vault.hashicorp.com/agent-inject-secret-config: "kv/data/payment-service/config"
+
+KUBERNETES AUTH POLICY EXAMPLES
+
+Basic read policy:
+path "kv/data/payment-service/*" {
+  capabilities = ["read", "list"]
+}
+
+Oracle DB policy for Kubernetes app:
+path "oracle/creds/payment-db-role" {
+  capabilities = ["read"]
+}
+
+KUBERNETES AUTH TROUBLESHOOTING
+
+Error: Kubernetes authentication failed - invalid service account
+Cause: Service account name does not match bound_service_account_names in Vault role
+Fix: Verify service account name matches exactly. Re-create Vault role if needed.
+
+Error: Namespace mismatch
+Cause: Pod is running in different namespace than configured in Vault role
+Fix: Update bound_service_account_namespaces in Vault role
+
+Error: JWT validation failed
+Cause: Kubernetes CA cert or token_reviewer_jwt is incorrect
+Fix: Re-configure Kubernetes auth with correct CA cert
+
+Error: Permission denied after authentication
+Cause: Policy not attached to Vault role or wrong secret path in policy
+Fix: Verify policy and path with vault policy read payment-policy
+
+Error: Role not found
+Cause: Vault role does not exist or wrong role name
+Fix: List roles with vault list auth/kubernetes/role/
+
+KEYWORDS
+kubernetes auth, vault kubernetes, service account, pod authentication, kubernetes secrets,
+k8s vault, vault agent, sidecar injection, namespace, bound service account

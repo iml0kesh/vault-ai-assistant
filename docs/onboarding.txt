@@ -2,129 +2,81 @@
 
 Vault Application Onboarding Guide
 
-Purpose:
-This document explains how to onboard a VM-based application to HashiCorp Vault using AppRole authentication.
+Purpose: This document explains the onboarding process for applications integrating with HashiCorp Vault.
 
-Use Case:
+When To Use:
 
-* Application runs on VM
-* Application needs secure secret retrieval
-* Application cannot use Kubernetes authentication
-* Machine-to-machine authentication required
+New application requires secrets from Vault
+Existing application migrating to Vault
+Application requires secure credential management
+Team wants centralized secret storage
 
-Recommended Auth Method:
-VM-based applications should use AppRole authentication.
+Required Inputs:
 
-Required Consumer Inputs:
+Application Name
+Environment (dev, qa, prod)
+Namespace
+Team Name
+Secret Type
+Authentication Method
+Vault Path
 
-* Application Name
-* Environment (dev, qa, prod)
-* Namespace
-* Secret Type
-* Vault Path
-* Auth Method
+Vault Onboarding Workflow:
 
-Onboarding Workflow:
+Step 1: Consumer Raises Request The application team requests Vault onboarding.
 
-Step 1: Validate Request
+Required information:
 
-* Verify approvals exist
-* Confirm naming standards
-* Confirm namespace exists
-* Validate secret path
+Application name
+Environment
+Secret requirement
+Namespace
 
-Step 2: Create Vault Policy
-Example:
+Step 2: Validate Request Vault team validates:
 
-path "kv/data/payment-service/*" {
-capabilities = ["read"]
-}
+Namespace exists
+Naming convention follows standards
+Correct auth method selected
+Required approvals exist
 
-Policy Naming Convention: <application-name>-policy
+Step 3: Select Authentication Method Recommended authentication methods:
 
-Example:
-payment-service-policy
+AppRole for VM-based applications
+Kubernetes Auth for Kubernetes workloads
+AWS IAM Auth for AWS-hosted workloads
+JWT/OIDC for CI/CD pipelines
 
-Step 3: Create AppRole
-Command:
+Step 4: Create Vault Policy Vault policy is created to control access.
 
-vault write auth/approle/role/payment-service 
-token_policies="payment-service-policy" 
-token_ttl=1h 
-token_max_ttl=4h
+Example policy:
 
-Step 4: Generate Role ID
-Command:
+path "kv/data/payment-service/*" { capabilities = ["read"] }
 
-vault read auth/approle/role/payment-service/role-id
+Step 5: Create Authentication Method Depending on use case:
 
-Output:
-role_id = xxxxxxxx-xxxx-xxxx
+AppRole created for VM applications
+Kubernetes role configured for pods
+IAM role mapped for AWS
 
-Step 5: Generate Secret ID
-Command:
+Step 6: Share Integration Details Vault team shares:
 
-vault write -f auth/approle/role/payment-service/secret-id
+Vault URL
+Namespace
+Role details
+Secret path
 
-Output:
-secret_id = xxxxxxxx-xxxx-xxxx
+Common Onboarding Questions:
 
-Step 6: Share Credentials Securely
-Share:
+Question: What is required before onboarding? Answer: Application details, namespace, auth method, and secret path.
 
-* role_id
-* secret_id
-* Vault URL
-* Namespace
+Question: Which auth method should I use? Answer: Depends on workload type.
 
-Common Errors:
+Question: Can onboarding happen without policy? Answer: No. Policy defines access control.
 
-Error: Permission Denied
-Cause:
+Keywords:
 
-* Wrong policy
-* Missing read capability
-* Incorrect Vault path
-
-Resolution:
-
-* Verify policy mapping
-* Validate capabilities
-
-Error: Invalid Secret ID
-Cause:
-
-* Secret ID expired
-* Secret ID already consumed
-
-Resolution:
-
-* Generate new Secret ID
-
-FAQ:
-
-Question: Which applications should use AppRole?
-Answer: VM-based applications.
-
-Question: Is AppRole suitable for Kubernetes?
-Answer: No. Use Kubernetes authentication.
-
-Question: Can AppRole rotate automatically?
-Answer: Yes. Secret IDs can be rotated.
-
-Related Keywords:
-
-* Vault onboarding
-* AppRole
-* VM authentication
-* Secret retrieval
-* Policy creation
-* Vault access
-
-Sample User Questions:
-
-* How do I onboard an application to Vault?
-* Which auth method should I use for VM application?
-* How does AppRole work?
-* How do I generate role_id and secret_id?
-* What policy is required for Vault onboarding?
+onboarding
+application onboarding
+vault integration
+vault access
+secrets onboarding

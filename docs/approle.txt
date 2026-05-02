@@ -1,0 +1,74 @@
+Vault AppRole Authentication Guide
+
+Purpose: AppRole authentication is used for machine-to-machine authentication.
+
+When To Use AppRole:
+
+Application runs on Virtual Machine
+Bare-metal workloads
+Non-Kubernetes applications
+Batch jobs
+Java or Python services hosted on VM
+
+AppRole Overview: AppRole uses:
+
+role_id
+secret_id
+
+Application authenticates using both values.
+
+AppRole Creation Workflow:
+
+Step 1: Create Vault Policy
+
+Example:
+
+path "kv/data/myapp/*" { capabilities = ["read"] }
+
+Step 2: Create AppRole
+
+Command:
+
+vault write auth/approle/role/myapp
+token_policies="myapp-policy"
+token_ttl=1h
+token_max_ttl=4h
+
+Step 3: Read Role ID
+
+Command:
+
+vault read auth/approle/role/myapp/role-id
+
+Step 4: Generate Secret ID
+
+Command:
+
+vault write -f auth/approle/role/myapp/secret-id
+
+Step 5: Application Uses Credentials
+
+Application sends:
+
+role_id
+secret_id
+
+Vault returns token.
+
+Common Questions:
+
+Question: What is AppRole? Answer: AppRole is a Vault auth method used for machine authentication.
+
+Question: Which applications should use AppRole? Answer: VM-based applications.
+
+Question: Is AppRole secure? Answer: Yes. It separates identity and secret.
+
+Question: Can AppRole rotate credentials? Answer: Yes. Secret IDs can be rotated.
+
+Keywords:
+
+approle
+role_id
+secret_id
+vm authentication
+vault approle

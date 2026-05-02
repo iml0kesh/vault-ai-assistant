@@ -1,0 +1,141 @@
+VAULT APPROLE AUTHENTICATION - COMPLETE GUIDE
+
+PURPOSE
+AppRole authentication is designed for machine-to-machine authentication in HashiCorp Vault.
+It is the recommended auth method for VM-based, bare-metal, and traditional application workloads.
+
+WHEN TO USE APPROLE
+- Application runs on a Virtual Machine (VM)
+- Bare-metal server workloads
+- Java, Python, Node.js services hosted on VM
+- Batch jobs and scheduled tasks
+- Non-Kubernetes applications
+- Legacy enterprise applications
+- Background services and daemons
+
+WHEN NOT TO USE APPROLE
+- Do not use AppRole for Kubernetes pods (use Kubernetes Auth instead)
+- Do not use AppRole for AWS EC2 workloads (use AWS IAM Auth instead)
+- Do not use AppRole for GitHub Actions (use GitHub Auth instead)
+
+HOW APPROLE WORKS
+AppRole uses two components for authentication:
+1. role_id - A static identifier for the application (like a username)
+2. secret_id - A dynamic credential (like a password, can be rotated)
+
+The application sends both role_id and secret_id to Vault.
+Vault validates both values and returns a Vault token.
+The application uses the Vault token to read secrets.
+
+APPROLE ONBOARDING WORKFLOW
+
+Step 1: Enable AppRole Auth Method
+Command: vault auth enable approle
+Note: Only needed once per Vault cluster. Skip if already enabled.
+
+Step 2: Create Vault Policy
+Define what secrets the application can access.
+Example:
+path "kv/data/myapp/*" {
+  capabilities = ["read"]
+}
+Command: vault policy write myapp-policy myapp-policy.hcl
+
+Step 3: Create AppRole Role
+Command:
+vault write auth/approle/role/myapp \
+  token_policies="myapp-policy" \
+  token_ttl=1h \
+  token_max_ttl=4h \
+  secret_id_ttl=24h \
+  secret_id_num_uses=0
+
+Parameters explained:
+- token_policies: Vault policy attached to this role
+- token_ttl: How long the token is valid
+- token_max_ttl: Maximum token lifetime
+- secret_id_ttl: How long each secret_id is valid
+- secret_id_num_uses: How many times secret_id can be used (0 = unlimited)
+
+Step 4: Read Role ID
+Command: vault read auth/approle/role/myapp/role-id
+Output: role_id = xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+Note: role_id is static. Share with application team.
+
+Step 5: Generate Secret ID
+Command: vault write -f auth/approle/role/myapp/secret-id
+Output: secret_id = xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+Note: secret_id should be treated like a password. Rotate regularly.
+
+Step 6: Application Authentication
+Application sends role_id and secret_id to Vault login endpoint.
+Command: vault write auth/approle/login role_id=<role_id> secret_id=<secret_id>
+Output: Vault token returned to application.
+
+Step 7: Application Reads Secrets
+Application uses Vault token to read secrets.
+Command: vault kv get kv/myapp/config
+
+REQUIRED INPUTS FOR APPROLE ONBOARDING
+- Application Name (example: payment-service)
+- Environment (dev / qa / prod)
+- Vault Namespace
+- Secret Path (example: kv/data/payment-service/)
+- Team Name
+- Required Capabilities (read / list / create / update / delete)
+- Token TTL preference
+- Secret ID rotation preference
+
+APPROLE BEST PRACTICES
+- Never hardcode role_id or secret_id in application source code
+- Store secret_id in a secure location such as an environment variable or secrets manager
+- Set secret_id_ttl to enforce expiry and regular rotation
+- Use response wrapping for secret_id delivery to application teams
+- Use least privilege - only grant read capability unless write is required
+- Separate AppRole roles per application and per environment
+- Use token_num_uses=1 for high-security use cases (single use token)
+- Monitor AppRole login events in Vault audit logs
+- Rotate secret_id on a schedule (monthly or quarterly)
+- Never share the same AppRole role between multiple applications
+
+APPROLE POLICY EXAMPLES
+
+Basic read-only policy:
+path "kv/data/myapp/*" {
+  capabilities = ["read", "list"]
+}
+
+Multi-path policy:
+path "kv/data/myapp/config" {
+  capabilities = ["read"]
+}
+path "kv/data/myapp/credentials" {
+  capabilities = ["read"]
+}
+
+Oracle DB policy:
+path "oracle/creds/myapp-role" {
+  capabilities = ["read"]
+}
+
+APPROLE TROUBLESHOOTING
+
+Error: Invalid role_id
+Cause: Wrong role_id provided
+Fix: Re-read role_id using vault read auth/approle/role/myapp/role-id
+
+Error: Invalid secret_id
+Cause: Secret ID expired or already used
+Fix: Generate new secret_id using vault write -f auth/approle/role/myapp/secret-id
+
+Error: Permission denied after login
+Cause: Policy not attached or wrong policy path
+Fix: Verify policy with vault policy read myapp-policy
+
+Error: AppRole role not found
+Cause: Role was not created or wrong role name
+Fix: List roles using vault list auth/approle/role/
+
+KEYWORDS
+approle, role_id, secret_id, vm authentication, machine authentication, vault approle,
+batch job auth, java vault, python vault, token_ttl, secret_id rotation

@@ -1,0 +1,80 @@
+Vault Common Errors Guide
+
+Error: Permission Denied
+
+Cause:
+
+Missing policy
+Wrong path
+Missing capability
+
+Resolution:
+
+Validate policy
+Verify secret path
+Confirm read permission exists
+
+Error: Invalid Secret ID
+
+Cause:
+
+Secret ID expired
+Secret ID already used
+
+Resolution:
+
+Generate new secret_id
+
+Error: AppRole Login Failed
+
+Cause:
+
+Wrong role_id
+Wrong secret_id
+AppRole missing policy
+
+Resolution:
+
+Validate AppRole configuration
+Regenerate credentials
+
+Error: Kubernetes Authentication Failed
+
+Cause:
+
+Invalid service account
+Namespace mismatch
+Wrong Vault role
+
+Resolution:
+
+Validate Kubernetes role mapping
+Confirm namespace
+
+Error: Secret Not Found
+
+Cause:
+
+Incorrect secret path
+Secret does not exist
+
+Resolution:
+
+Verify KV path
+Confirm secret creation
+
+FAQ:
+
+Question: What is most common Vault error? Answer: Permission denied.
+
+Question: Why does AppRole fail? Answer: Invalid credentials or missing policy.
+
+Question: Why cannot pod authenticate? Answer: Kubernetes role mismatch.
+
+Keywords:
+
+vault errors
+permission denied
+invalid secret id
+vault troubleshooting
+login failed

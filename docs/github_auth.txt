@@ -1,0 +1,90 @@
+VAULT GITHUB AUTHENTICATION - COMPLETE GUIDE
+
+PURPOSE
+GitHub authentication allows GitHub Actions workflows and GitHub users to authenticate
+with HashiCorp Vault using their GitHub identity. Ideal for CI/CD pipelines.
+
+WHEN TO USE GITHUB AUTH
+- GitHub Actions workflow needs Vault secrets during CI/CD pipeline
+- GitHub-based deployment pipeline
+- Automated workflows running in GitHub Actions
+
+WHEN NOT TO USE GITHUB AUTH
+- Do not use GitHub Auth for VM applications (use AppRole instead)
+- Do not use GitHub Auth for Kubernetes pods (use Kubernetes Auth instead)
+- Do not use GitHub Auth for AWS workloads (use AWS IAM Auth instead)
+
+HOW GITHUB AUTH WORKS
+1. GitHub Actions workflow has a GitHub token
+2. Workflow sends the GitHub token to Vault
+3. Vault calls GitHub API to validate the token
+4. Vault checks the GitHub organization and team membership
+5. Vault returns a Vault token with attached policies
+6. Workflow uses the Vault token to read secrets during pipeline execution
+
+GITHUB AUTH ONBOARDING WORKFLOW
+
+Step 1: Enable GitHub Auth Method
+Command: vault auth enable github
+
+Step 2: Configure GitHub Auth
+Command:
+vault write auth/github/config organization=my-org
+
+Step 3: Create Vault Policy
+Example:
+path "kv/data/cicd/*" {
+  capabilities = ["read"]
+}
+Command: vault policy write cicd-policy cicd-policy.hcl
+
+Step 4: Map GitHub Team to Vault Policy
+Command:
+vault write auth/github/map/teams/vault-team value=cicd-policy
+
+Step 5: GitHub Actions Workflow Authenticates
+In GitHub Actions workflow YAML:
+- name: Authenticate to Vault
+  uses: hashicorp/vault-action@v2
+  with:
+    url: https://vault.company.com
+    method: github
+    githubToken: ${{ secrets.GITHUB_TOKEN }}
+    secrets: kv/data/cicd/deploy api_key | API_KEY
+
+REQUIRED INPUTS FOR GITHUB AUTH ONBOARDING
+- GitHub Organization Name
+- GitHub Team Name
+- Vault Namespace
+- Secret Path
+- Environment
+
+GITHUB AUTH BEST PRACTICES
+- Use GitHub teams to control access, not individual users
+- Limit secrets access to only what the pipeline needs
+- Rotate secrets regularly
+- Use short TTL tokens for pipeline runs
+- Audit GitHub Auth access in Vault audit logs
+
+GITHUB AUTH POLICY EXAMPLE
+path "kv/data/cicd/deploy" {
+  capabilities = ["read"]
+}
+
+TROUBLESHOOTING GITHUB AUTH
+
+Error: GitHub token invalid
+Cause: Token expired or wrong token passed
+Fix: Regenerate GitHub token
+
+Error: Organization not authorized
+Cause: GitHub org not configured in Vault
+Fix: vault write auth/github/config organization=correct-org
+
+Error: Team mapping not found
+Cause: Team not mapped to a Vault policy
+Fix: vault write auth/github/map/teams/your-team value=your-policy
+
+KEYWORDS
+github auth, vault github, github actions vault, cicd vault, github token vault,
+github organization vault, pipeline secrets, github workflow vault

@@ -1,0 +1,199 @@
+VAULT COMMON ERRORS AND TROUBLESHOOTING GUIDE
+
+PURPOSE
+This guide covers the most common errors encountered when integrating applications
+with HashiCorp Vault and how to resolve them.
+
+ERROR: PERMISSION DENIED
+
+Symptoms: HTTP 403 or "1 error occurred: * 1 error occurred: permission denied"
+
+Common Causes and Fixes:
+
+Cause 1: Policy not attached to auth role
+Fix: Check token policies on the AppRole or Kubernetes role
+Command: vault read auth/approle/role/myapp
+Look for: token_policies field
+
+Cause 2: Wrong path format in policy for KV v2
+Fix: Policy must include /data/ for KV v2
+Wrong:  path "kv/myapp/*"
+Correct: path "kv/data/myapp/*"
+
+Cause 3: Missing capability
+Fix: Add required capability to policy
+Example: If listing fails, add "list" to capabilities
+
+Cause 4: Application using wrong secret path
+Fix: Verify exact secret path matches policy path
+
+Cause 5: Namespace mismatch
+Fix: Ensure Vault namespace is set correctly in application
+
+DEBUG STEPS FOR PERMISSION DENIED:
+1. vault token lookup (check which policies are attached)
+2. vault policy read <policy-name> (verify policy content)
+3. vault token capabilities kv/data/myapp/config (test specific path)
+
+ERROR: INVALID ROLE_ID (AppRole)
+
+Symptoms: "invalid role_id" on AppRole login
+
+Causes and Fixes:
+- Wrong role_id value passed by application
+- Fix: Re-read correct role_id: vault read auth/approle/role/myapp/role-id
+- Fix: Verify application is using the role_id from the correct environment
+
+ERROR: INVALID SECRET_ID (AppRole)
+
+Symptoms: "invalid secret_id" on AppRole login
+
+Causes and Fixes:
+
+Cause 1: Secret ID expired (secret_id_ttl has passed)
+Fix: Generate new secret_id: vault write -f auth/approle/role/myapp/secret-id
+
+Cause 2: Secret ID already used (if secret_id_num_uses is set to limited value)
+Fix: Generate new secret_id as above
+
+Cause 3: Secret ID was revoked
+Fix: Generate new secret_id
+
+ERROR: APPROLE LOGIN FAILED
+
+Symptoms: "login failed" when application tries to authenticate
+
+Causes and Fixes:
+- Wrong role_id or secret_id combination
+- AppRole role has no policy attached
+- AppRole role does not exist
+Fix:
+1. Verify role exists: vault list auth/approle/role/
+2. Check role config: vault read auth/approle/role/myapp
+3. Regenerate both role_id and secret_id
+
+ERROR: KUBERNETES AUTHENTICATION FAILED
+
+Symptoms: "could not validate service account token" or "namespace not authorized"
+
+Cause 1: Service account name mismatch
+The pod's service account does not match bound_service_account_names in Vault role
+Fix: vault read auth/kubernetes/role/payment-role
+Ensure bound_service_account_names matches the actual pod service account name exactly
+
+Cause 2: Namespace mismatch
+Pod is running in a different namespace than bound_service_account_namespaces
+Fix: Update Vault role with correct namespace
+
+Cause 3: Service account token invalid
+Kubernetes SA token format issue
+Fix: Re-configure Kubernetes auth: vault write auth/kubernetes/config ...
+
+Cause 4: JWT expired
+Fix: Pod should request a fresh service account token
+
+ERROR: SECRET NOT FOUND
+
+Symptoms: "no value found at path" or "secret not found"
+
+Causes and Fixes:
+
+Cause 1: Wrong secret path
+Fix: Browse available paths: vault kv list kv/
+
+Cause 2: Secret not yet created
+Fix: Create the secret: vault kv put kv/myapp/config key=value
+
+Cause 3: Secret was deleted
+Fix: Check metadata for deleted secrets: vault kv metadata get kv/myapp/config
+Restore from previous version: vault kv undelete -versions=<version> kv/myapp/config
+
+Cause 4: KV v2 path issue (reading without /data/ in API call)
+Fix: Ensure application is using correct API path format for KV v2
+
+ERROR: TOKEN EXPIRED
+
+Symptoms: "token is expired" or "missing client token"
+
+Causes and Fixes:
+- Application token TTL has passed
+Fix:
+1. Application must re-authenticate to get a new token
+2. Review token_ttl setting on auth role
+3. Implement token renewal logic in application before expiry
+Renewal command: vault token renew <token>
+Note: Token cannot be renewed beyond token_max_ttl
+
+ERROR: ORACLE DATABASE - CREDENTIAL GENERATION FAILED
+
+Symptoms: "error generating credentials" for Oracle secret engine
+
+Causes and Fixes:
+
+Cause 1: Vault cannot connect to Oracle DB
+Fix: Check Vault server network connectivity to Oracle host
+Test: vault write database/config/oracle-prod rotation_statements="" (forces connection test)
+
+Cause 2: Vault Oracle service account lacks privileges
+Fix: Grant CREATE USER and necessary Oracle privileges to Vault service account
+
+Cause 3: Oracle plugin not installed
+Fix: Contact Vault Ops team to install vault-plugin-database-oracle
+
+Cause 4: Oracle listener not running
+Fix: Verify Oracle DB is running and listener is accepting connections
+
+ERROR: LDAP CONNECTION FAILED
+
+Symptoms: "error connecting to LDAP" or "bind failed"
+
+Causes and Fixes:
+
+Cause 1: Wrong LDAP URL
+Fix: Verify ldaps:// URL and port (636 for LDAPS, 389 for LDAP)
+
+Cause 2: Invalid bind credentials
+Fix: Verify binddn and bindpass for Vault's LDAP service account
+
+Cause 3: Certificate error (LDAPS)
+Fix: Ensure Vault has the correct CA cert to validate LDAP server cert
+
+ERROR: VAULT SERVER NOT RESPONDING
+
+Symptoms: Connection refused or timeout
+
+Causes and Fixes:
+- Vault is sealed: vault operator unseal
+- Vault is down: contact Vault Ops team
+- Wrong Vault URL in application config: verify VAULT_ADDR environment variable
+- Network issue: verify connectivity to Vault server address and port
+
+ERROR: NAMESPACE NOT FOUND
+
+Symptoms: "namespace not found" when accessing Vault
+
+Causes and Fixes:
+- Application is specifying wrong namespace
+Fix: Verify namespace exists: vault namespace list
+Fix: Check VAULT_NAMESPACE environment variable in application
+
+GENERAL DEBUGGING COMMANDS
+vault status (check if Vault is running and unsealed)
+vault token lookup (check current token details and policies)
+vault policy list (list all available policies)
+vault policy read <policy-name> (read policy content)
+vault auth list (list enabled auth methods)
+vault secrets list (list enabled secret engines)
+vault audit list (list enabled audit devices)
+
+HOW TO RAISE A VAULT SUPPORT TICKET
+If self-service troubleshooting does not resolve the issue:
+1. Collect: error message, Vault address, namespace, auth method used, application name
+2. Collect: vault token lookup output (with sensitive values redacted)
+3. Contact Vault Ops team via your internal ticketing system
+4. Include environment details (dev/qa/prod)
+
+KEYWORDS
+vault errors, permission denied, invalid secret id, vault troubleshooting, login failed,
+kubernetes auth error, approle error, token expired, oracle vault error, ldap vault error,
+vault debug, vault not responding, namespace error, vault support

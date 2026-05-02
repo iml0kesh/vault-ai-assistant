@@ -1,0 +1,58 @@
+Vault Policy Guide
+
+Purpose: Policies control access to Vault secrets.
+
+Policies define:
+
+What secret path user can access
+Which operations are allowed
+Least privilege permissions
+
+Common Capabilities:
+
+read: Allows reading secret.
+
+create: Allows creating secret.
+
+update: Allows updating secret.
+
+delete: Allows deleting secret.
+
+list: Allows listing secret paths.
+
+Policy Example:
+
+path "kv/data/payment-service/*" { capabilities = ["read"] }
+
+Policy Naming Convention:
+
+-policy
+
+Example:
+
+payment-service-policy
+
+Common Policy Questions:
+
+Question: Why are policies needed? Answer: Policies enforce access control.
+
+Question: Can user access Vault without policy? Answer: No.
+
+Question: What happens if capability is missing? Answer: Permission denied.
+
+Question: Can policy be attached to AppRole? Answer: Yes.
+
+Policy Best Practices:
+
+Follow least privilege
+Avoid wildcard access
+Separate policies per application
+Restrict production access
+
+Keywords:
+
+vault policy
+capabilities
+permission denied
+access control
+vault authorization

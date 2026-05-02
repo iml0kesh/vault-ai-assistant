@@ -1,0 +1,2 @@
+invalid type: string "VAULT NAMESPACE IN POLICIES\nIf using Vault namespaces, policies are namespace-scoped.\nPolicy in namespace \"finance\":\nvault namespace create finance\nvault policy write -namespace=finance payment-policy payment-policy.hcl", expected i64y when you need to restrict a sub-path within a wildcard grant", expected i641: Vault cannot connect to Oracle DB
+Fix: Check Vault server 

@@ -1,0 +1,169 @@
+VAULT APPLICATION ONBOARDING - COMPLETE GUIDE
+
+PURPOSE
+This document explains the complete end-to-end onboarding process for teams
+integrating their applications with HashiCorp Vault through the self-service platform.
+
+WHO USES THIS
+- Application development teams onboarding new applications
+- Platform engineers setting up Vault for workloads
+- Vault Ops team processing onboarding requests
+
+SUPPORTED AUTHENTICATION METHODS
+Only the following auth methods are supported:
+1. AppRole Auth - for VM and bare-metal workloads
+2. Kubernetes Auth - for Kubernetes pod workloads
+3. AWS IAM Auth - for AWS EC2 and AWS workloads
+4. GitHub Auth - for GitHub Actions CI/CD pipelines
+
+SUPPORTED SECRET ENGINES
+Only the following secret engines are supported:
+1. KV Secret Engine - for static secrets (API keys, passwords, config)
+2. Oracle Database Secret Engine - for dynamic Oracle DB credentials
+3. LDAP Secret Engine - for LDAP/Active Directory service account credentials
+
+ENVIRONMENT TO AUTH METHOD DECISION GUIDE
+Where is your application running?
+
+VM / Bare Metal / Traditional App / Java app on server -> Use AppRole Auth
+AWS EC2 / AWS Lambda / AWS ECS / Fargate -> Use AWS IAM Auth
+Kubernetes Pod / Container / Microservice on K8s -> Use Kubernetes Auth
+GitHub Actions / GitHub Workflow / CI/CD Pipeline -> Use GitHub Auth
+
+SECRET TYPE TO SECRET ENGINE DECISION GUIDE
+What type of secret does your application need?
+
+Static credentials / API Keys / Passwords / Tokens / Config -> Use KV Secret Engine
+Oracle Database credentials (dynamic) -> Use Oracle Database Secret Engine
+LDAP credentials / Active Directory service account -> Use LDAP Secret Engine
+
+ONBOARDING WORKFLOW - STEP BY STEP
+
+Step 1: Consumer Raises Onboarding Request
+Application team provides:
+- Application Name
+- Environment (dev / qa / prod)
+- Namespace
+- Team Name
+- Where the application runs (VM / Kubernetes / AWS / GitHub)
+- What secret type is needed (API Key / Oracle DB / LDAP)
+
+Step 2: Vault Ops Validates Request
+Vault Ops team checks:
+- Namespace exists in Vault
+- Application name follows naming convention
+- Auth method matches workload type
+- Required approvals are in place
+- Secret path follows naming standards
+
+Step 3: Select Authentication Method
+Based on the workload type, the correct auth method is selected.
+Refer to the Environment to Auth Method Decision Guide above.
+
+Step 4: Select Secret Engine
+Based on the secret type, the correct secret engine is selected.
+Refer to the Secret Type to Secret Engine Decision Guide above.
+
+Step 5: Create Vault Policy
+A dedicated policy is created for the application.
+Policy grants only the minimum required access (least privilege).
+
+Step 6: Configure Auth Method
+For AppRole: Create AppRole role, generate role_id and secret_id
+For Kubernetes: Create Kubernetes Vault role mapped to service account
+For AWS IAM: Create AWS Vault role mapped to IAM role ARN
+For GitHub: Map GitHub team to Vault policy
+
+Step 7: Configure Secret Engine (if applicable)
+For KV: Create secret at the defined path
+For Oracle: Configure Oracle connection, create DB role
+For LDAP: Configure LDAP connection, create static role
+
+Step 8: Share Integration Details
+Vault Ops shares with the application team:
+- Vault URL
+- Vault Namespace
+- Role name (for AppRole / Kubernetes / AWS)
+- Secret path
+- Policy name
+
+Step 9: Application Team Tests Integration
+Application team tests authentication and secret retrieval in dev/qa environment.
+
+Step 10: Production Promotion
+After successful testing, Vault Ops replicates the configuration in production.
+
+ONBOARDING REQUEST FORM - REQUIRED INPUTS
+Application Name: (example: payment-service)
+Team Name: (example: payments-platform-team)
+Environment: (dev / qa / prod)
+Vault Namespace: (example: finance)
+Application Platform: (VM / Kubernetes / AWS / GitHub Actions)
+Secret Type Required: (API Key / Password / Oracle DB Credentials / LDAP Credentials)
+Secret Path: (example: kv/data/payment-service/prod/config)
+Required Access Level: (read only / read-write)
+Oracle DB Host (if Oracle): 
+Oracle Service Name (if Oracle):
+Kubernetes Namespace (if K8s):
+Kubernetes Service Account (if K8s):
+AWS IAM Role ARN (if AWS):
+GitHub Organization (if GitHub):
+
+EXAMPLE ONBOARDING SCENARIOS
+
+Scenario 1: Java App on VM needing API Key
+Platform: VM -> Auth: AppRole
+Secret: API Key -> Engine: KV Secret Engine
+
+Scenario 2: Java App on VM needing Oracle DB credentials
+Platform: VM -> Auth: AppRole
+Secret: Oracle DB -> Engine: Oracle Database Secret Engine
+
+Scenario 3: Python Microservice on Kubernetes needing API Key
+Platform: Kubernetes -> Auth: Kubernetes Auth
+Secret: API Key -> Engine: KV Secret Engine
+
+Scenario 4: Python Microservice on Kubernetes needing Oracle DB
+Platform: Kubernetes -> Auth: Kubernetes Auth
+Secret: Oracle DB -> Engine: Oracle Database Secret Engine
+
+Scenario 5: GitHub Actions pipeline needing deployment credentials
+Platform: GitHub Actions -> Auth: GitHub Auth
+Secret: Static credentials -> Engine: KV Secret Engine
+
+Scenario 6: AWS Lambda needing API Key
+Platform: AWS Lambda -> Auth: AWS IAM Auth
+Secret: API Key -> Engine: KV Secret Engine
+
+Scenario 7: Enterprise Java App on VM needing LDAP credentials
+Platform: VM -> Auth: AppRole
+Secret: LDAP -> Engine: LDAP Secret Engine
+
+NOT SUPPORTED USE CASES
+The following use cases are not supported by the self-service platform:
+- SSH secret engine
+- PKI secret engine
+- Transit secret engine
+- JWT/OIDC auth method
+- Token auth method for applications
+- MySQL or PostgreSQL database secret engine
+- Azure auth method
+
+For unsupported use cases, contact the Vault Ops team directly.
+Response for unsupported use case:
+"This use case is not currently supported by the Vault self-service platform. A Vault engineer will get in touch with you shortly."
+
+ONBOARDING BEST PRACTICES
+- Always onboard in dev environment first, then promote to prod
+- One application = one AppRole or one Kubernetes role (never share)
+- Follow naming conventions strictly
+- Use separate secret paths per environment
+- Document the onboarding configuration and store in team wiki
+- Test secret retrieval before go-live
+- Set up monitoring and alerting on Vault token expiry
+- Plan for secret rotation from day one
+
+KEYWORDS
+vault onboarding, application onboarding, vault integration, self-service vault,
+onboarding request, vault access, secrets onboarding, vault ops, auth method selection,
+secret engine selection, onboarding workflow
