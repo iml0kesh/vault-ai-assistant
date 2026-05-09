@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vault Self-Service Portal - Secret Engines</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+  </head>
+  <body>
+    <header>
+      <div class="logo">
+        <div class="logo-icon"></div>
+        Vault Self-Service Portal
+      </div>
+      <div class="header-meta">
+        <span class="status-dot"></span>ONLINE &nbsp;·&nbsp; llama3.2:3b
+        &nbsp;·&nbsp; LOCAL
+      </div>
+    </header>
+
+    <div class="layout">
+      <!-- Sidebar -->
+      <aside>
+        <div>
+          <div class="sidebar-section-title">Navigation</div>
+          <a href="/" class="nav-link">Assistant Chat</a>
+          <a href="/auth" class="nav-link">Auth Methods</a>
+          <a href="/engines" class="nav-link active">Secret Engines</a>
+          <a href="/help" class="nav-link">Quick Start & Help</a>
+        </div>
+      </aside>
+
+      <!-- Secret Engines Page -->
+      <div class="page active content-pad">
+        <h2>Secret Engines</h2>
+        <div class="badge-list" style="margin-bottom: 16px">
+          <span class="badge badge-engine">KV Secret Engine</span>
+          <span class="badge badge-engine">Oracle DB Engine</span>
+          <span class="badge badge-engine">LDAP Engine</span>
+        </div>
+        <p>Vault secret engines store, generate, or encrypt data.</p>
+        <p>
+          - <strong>KV:</strong> Key-Value store for static secrets (API keys,
+          passwords).<br />
+          - <strong>Oracle DB:</strong> Dynamically generate Oracle database
+          credentials.<br />
+          - <strong>LDAP:</strong> Manage LDAP credentials dynamically.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vault Self-Service Portal - Help</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+  </head>
+  <body>
+    <header>
+      <div class="logo">
+        <div class="logo-icon"></div>
+        Vault Self-Service Portal
+      </div>
+      <div class="header-meta">
+        <span class="status-dot"></span>ONLINE &nbsp;·&nbsp; llama3.2:3b
+        &nbsp;·&nbsp; LOCAL
+      </div>
+    </header>
+
+    <div class="layout">
+      <!-- Sidebar -->
+      <aside>
+        <div>
+          <div class="sidebar-section-title">Navigation</div>
+          <a href="/" class="nav-link">Assistant Chat</a>
+          <a href="/auth" class="nav-link">Auth Methods</a>
+          <a href="/engines" class="nav-link">Secret Engines</a>
+          <a href="/help" class="nav-link active">Quick Start & Help</a>
+        </div>
+      </aside>
+
+      <!-- Help Page -->
+      <div class="page active content-pad">
+        <h2>Quick Start Scenarios</h2>
+        <p>Click on a scenario to ask the assistant about it.</p>
+        <div
+          style="
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 400px;
+            margin-bottom: 32px;
+          "
+        >
+          <a
+            href="/?prompt=My Java app runs on a VM and needs Oracle DB credentials"
+            class="chip"
+          >
+            <strong>VM + Oracle DB</strong>AppRole + Oracle Engine
+          </a>
+          <a
+            href="/?prompt=I have a Python microservice on Kubernetes that needs API keys"
+            class="chip"
+          >
+            <strong>K8s + API Keys</strong>Kubernetes + KV Engine
+          </a>
+          <a
+            href="/?prompt=My GitHub Actions pipeline needs deployment secrets"
+            class="chip"
+          >
+            <strong>GitHub Actions</strong>GitHub + KV Engine
+          </a>
+          <a href="/?prompt=AWS EC2 app needs LDAP credentials" class="chip">
+            <strong>AWS + LDAP</strong>IAM Auth + LDAP Engine
+          </a>
+        </div>
+        <h2>Help Topics</h2>
+        <div
+          style="
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 400px;
+          "
+        >
+          <a href="/?prompt=What is AppRole authentication?" class="chip"
+            >What is AppRole?</a
+          >
+          <a
+            href="/?prompt=I am getting permission denied error in Vault"
+            class="chip"
+            >Permission denied fix</a
+          >
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vault Self-Service Portal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='style.css') }}"
+    />
+  </head>
+  <body>
+    <header>
+      <div class="logo">
+        <div class="logo-icon"></div>
+        Vault Self-Service Portal
+      </div>
+      <div class="header-meta">
+        <span class="status-dot"></span>ONLINE &nbsp;·&nbsp; llama3.2:3b
+        &nbsp;·&nbsp; LOCAL
+      </div>
+    </header>
+
+    <div class="layout">
+      <!-- Info Panel -->
+      <div class="info-panel">
+        <div class="info-section">
+          <h3>Supported Auth Methods</h3>
+          <div class="badge-list">
+            <span class="badge badge-auth">AppRole Auth</span>
+            <span class="badge badge-auth">AWS IAM Auth</span>
+            <span class="badge badge-auth">Kubernetes Auth</span>
+            <span class="badge badge-auth">GitHub Auth</span>
+          </div>
+          <p>
+            Vault supports multiple authentication methods. Choose the one that
+            best fits your environment:
+          </p>
+          <ul>
+            <li>
+              <strong>AppRole:</strong> Ideal for machine-to-machine
+              authentication.
+            </li>
+            <li>
+              <strong>AWS IAM:</strong> Best for AWS EC2, Lambda, or ECS
+              workloads.
+            </li>
+            <li>
+              <strong>Kubernetes:</strong> Automatically authenticate pods using
+              service account tokens.
+            </li>
+            <li>
+              <strong>GitHub:</strong> Used mainly for developer access or CI/CD
+              pipelines.
+            </li>
+          </ul>
+        </div>
+
+        <div class="info-section">
+          <h3>Supported Secret Engines</h3>
+          <div class="badge-list">
+            <span class="badge badge-engine">KV Secret Engine</span>
+            <span class="badge badge-engine">Oracle DB Engine</span>
+            <span class="badge badge-engine">LDAP Engine</span>
+          </div>
+          <p>Vault secret engines store, generate, or encrypt data.</p>
+          <ul>
+            <li>
+              <strong>KV:</strong> Key-Value store for static secrets (API keys,
+              passwords).
+            </li>
+            <li>
+              <strong>Oracle DB:</strong> Dynamically generate Oracle database
+              credentials.
+            </li>
+            <li><strong>LDAP:</strong> Manage LDAP credentials dynamically.</li>
+          </ul>
+        </div>
+
+        <div class="info-section">
+          <h3>Quick Start Scenarios</h3>
+          <p>Click on a scenario to ask the assistant about it.</p>
+          <div class="scenario-list">
+            <span
+              class="scenario-chip"
+              onclick="
+                triggerPrompt(
+                  'My Java app runs on a VM and needs Oracle DB credentials',
+                )
+              "
+            >
+              <strong>VM + Oracle DB</strong><br />AppRole + Oracle Engine
+            </span>
+            <span
+              class="scenario-chip"
+              onclick="
+                triggerPrompt(
+                  'I have a Python microservice on Kubernetes that needs API keys',
+                )
+              "
+            >
+              <strong>K8s + API Keys</strong><br />Kubernetes + KV Engine
+            </span>
+            <span
+              class="scenario-chip"
+              onclick="
+                triggerPrompt(
+                  'My GitHub Actions pipeline needs deployment secrets',
+                )
+              "
+            >
+              <strong>GitHub Actions</strong><br />GitHub + KV Engine
+            </span>
+            <span
+              class="scenario-chip"
+              onclick="triggerPrompt('AWS EC2 app needs LDAP credentials')"
+            >
+              <strong>AWS + LDAP</strong><br />IAM Auth + LDAP Engine
+            </span>
+          </div>
+        </div>
+
+        <div class="info-section">
+          <h3>Help Topics</h3>
+          <div class="help-list">
+            <span
+              class="help-chip"
+              onclick="triggerPrompt('What is AppRole authentication?')"
+              >What is AppRole?</span
+            >
+            <span
+              class="help-chip"
+              onclick="
+                triggerPrompt('I am getting permission denied error in Vault')
+              "
+              >Permission denied fix</span
+            >
+          </div>
+        </div>
+      </div>
+
+      <!-- Chat Section -->
+      <div class="chat-section">
+        <!-- Messages -->
+        <div class="messages" id="messages">
+          <div class="msg">
+            <div class="avatar avatar-ai">V</div>
+            <div class="welcome">
+              <h2>Vault Onboarding Engineer</h2>
+              <p>
+                Hello! I'm your internal Vault self-service assistant. I'll help
+                you onboard your application into HashiCorp Vault step by
+                step.<br /><br />To get started, describe your application and
+                what secrets it needs. Or pick a common scenario below:
+              </p>
+              <div class="welcome-chips">
+                <span
+                  class="welcome-chip"
+                  onclick="
+                    triggerPrompt(
+                      'My Java app runs on a VM and needs Oracle DB credentials',
+                    )
+                  "
+                  >Java VM + Oracle DB</span
+                >
+                <span
+                  class="welcome-chip"
+                  onclick="
+                    triggerPrompt(
+                      'Python microservice on Kubernetes needs API keys',
+                    )
+                  "
+                  >K8s + API Keys</span
+                >
+                <span
+                  class="welcome-chip"
+                  onclick="
+                    triggerPrompt('GitHub Actions pipeline needs Vault secrets')
+                  "
+                  >GitHub Actions</span
+                >
+                <span
+                  class="welcome-chip"
+                  onclick="triggerPrompt('What is Kubernetes auth?')"
+                  >What is K8s Auth?</span
+                >
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Input -->
+        <div class="input-bar">
+          <button
+            class="clear-btn"
+            onclick="clearChat()"
+            title="Clear conversation"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path
+                d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+              />
+            </svg>
+          </button>
+          <textarea
+            id="input"
+            rows="1"
+            placeholder="Describe your application and what Vault secrets it needs…"
+            onkeydown="handleKey(event)"
+            oninput="autoResize(this)"
+          ></textarea>
+          <button class="send-btn" onclick="sendMessage()">
+            <svg width="16" height="16" viewBox="0 0 24 24">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let history = [];
+      let msgCount = 0;
+
+      // Check URL for prompts (from Help page)
+      window.onload = () => {
+        const params = new URLSearchParams(window.location.search);
+        const prompt = params.get("prompt");
+        if (prompt) {
+          setInput(decodeURIComponent(prompt));
+        }
+      };
+
+      function triggerPrompt(text) {
+        setInput(text);
+      }
+
+      function setInput(text) {
+        const inp = document.getElementById("input");
+        inp.value = text;
+        autoResize(inp);
+        inp.focus();
+      }
+
+      function autoResize(el) {
+        el.style.height = "auto";
+        el.style.height = Math.min(el.scrollHeight, 120) + "px";
+      }
+
+      function handleKey(e) {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      }
+
+      function addMsg(role, text) {
+        const box = document.getElementById("messages");
+        const wrap = document.createElement("div");
+        wrap.className = "msg " + role;
+        const av = document.createElement("div");
+        av.className =
+          role === "user" ? "avatar avatar-user" : "avatar avatar-ai";
+        av.textContent = role === "user" ? "U" : "V";
+        const bub = document.createElement("div");
+        bub.className =
+          role === "user" ? "bubble bubble-user" : "bubble bubble-ai";
+        bub.textContent = text;
+        wrap.appendChild(av);
+        wrap.appendChild(bub);
+        box.appendChild(wrap);
+        box.scrollTop = box.scrollHeight;
+        msgCount++;
+        return wrap;
+      }
+
+      function addTyping() {
+        const box = document.getElementById("messages");
+        const wrap = document.createElement("div");
+        wrap.className = "msg";
+        wrap.id = "typing";
+        const av = document.createElement("div");
+        av.className = "avatar avatar-ai";
+        av.textContent = "V";
+        const bub = document.createElement("div");
+        bub.className = "typing-bubble";
+        bub.innerHTML =
+          '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+        wrap.appendChild(av);
+        wrap.appendChild(bub);
+        box.appendChild(wrap);
+        box.scrollTop = box.scrollHeight;
+      }
+
+      function removeTyping() {
+        const t = document.getElementById("typing");
+        if (t) t.remove();
+      }
+
+      async function sendMessage() {
+        const inp = document.getElementById("input");
+        const text = inp.value.trim();
+        if (!text) return;
+
+        inp.value = "";
+        inp.style.height = "auto";
+
+        addMsg("user", text);
+        addTyping();
+
+        try {
+          const resp = await fetch("/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ message: text, history: history }),
+          });
+          const data = await resp.json();
+          removeTyping();
+          const aiText = data.response || "No response.";
+          addMsg("ai", aiText);
+          history.push({ user: text, assistant: aiText });
+        } catch (err) {
+          removeTyping();
+          addMsg(
+            "ai",
+            "Connection error. Make sure the Flask server is running on port 5000.",
+          );
+        }
+      }
+
+      function clearChat() {
+        history = [];
+        msgCount = 0;
+        document.getElementById("messages").innerHTML = `
+      <div class="msg">
+        <div class="avatar avatar-ai">V</div>
+        <div class="welcome">
+          <h2>Vault Onboarding Engineer</h2>
+          <p>Conversation cleared. Describe your application to start a new onboarding session.</p>
+        </div>
+      </div>`;
+        ["s1", "s2", "s3", "s4"].forEach((id, i) => {
+          document.getElementById(id).className =
+            i === 0 ? "stage active" : "stage";
+        });
+      }
+    </script>
+  </body>
+</html>
