@@ -3,341 +3,396 @@ from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_ollama import OllamaLLM
 from langchain_core.output_parsers import StrOutputParser
+import re
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 
-# ── Embeddings + Vector DB + LLM ──────────────────────────────────────────────
+# ── Models ─────────────────────────────────────────────────────────────────────
 embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 vectordb   = Chroma(persist_directory="vector_db", embedding_function=embeddings)
 retriever  = vectordb.as_retriever(search_kwargs={"k": 5})
 llm        = OllamaLLM(model="llama3.2:3b")
 
-# ── Python keyword detection (not LLM) ────────────────────────────────────────
+# ── Knowledge: why each method is correct ─────────────────────────────────────
+WHY_AUTH = {
+    "AppRole Auth":    "AppRole Auth is the right choice for VM and bare-metal servers — it uses a role_id and secret_id for machine-to-machine authentication without needing cloud identity.",
+    "AWS IAM Auth":    "AWS IAM Auth is the right choice for AWS EC2/Lambda/ECS — the instance authenticates using its attached IAM role, no credentials need to be stored.",
+    "Kubernetes Auth": "Kubernetes Auth is the right choice for pods — containers authenticate using their native Kubernetes service account token.",
+    "GitHub Auth":     "GitHub Auth is the right choice for GitHub Actions — pipelines authenticate using the built-in GitHub token.",
+}
+WHY_ENGINE = {
+    "KV Secret Engine":              "The KV Secret Engine stores static credentials like API keys, passwords, and tokens securely with versioning.",
+    "Oracle Database Secret Engine": "The Oracle Database Secret Engine dynamically generates short-lived Oracle credentials on demand, removing the need for static passwords.",
+    "LDAP Secret Engine":            "The LDAP Secret Engine manages and auto-rotates Active Directory / LDAP service account passwords.",
+}
+
+# ── Detection maps ─────────────────────────────────────────────────────────────
 PLATFORM_MAP = [
-    (["kubernetes", "k8s", "pod", "container", "kubectl", "helm"],     "Kubernetes",    "Kubernetes Auth"),
-    (["github action", "github workflow", "ci/cd", "cicd", "pipeline"], "GitHub Actions", "GitHub Auth"),
+    (["kubernetes", "k8s", "pod", "container", "kubectl", "helm"],      "Kubernetes",    "Kubernetes Auth"),
+    (["github action", "github workflow", "ci/cd", "cicd", "pipeline"], "GitHub Actions","GitHub Auth"),
     (["aws", "ec2", "lambda", "ecs", "fargate"],                        "AWS",           "AWS IAM Auth"),
     (["vm", "virtual machine", "bare metal", "baremetal", "server",
       "traditional", "on-prem", "on-premise"],                          "VM/Bare Metal", "AppRole Auth"),
 ]
 SECRET_MAP = [
-    (["oracle", "oracle db", "oracle database"],      "Oracle DB credentials",     "Oracle Database Secret Engine"),
-    (["ldap", "active directory", "openldap"],        "LDAP credentials",          "LDAP Secret Engine"),
-    (["api key", "password", "token", "static",
-      "config", "credential", "secret", "key"],       "Static credentials/API keys", "KV Secret Engine"),
+    (["oracle", "oracle db", "oracle database"],           "Oracle DB credentials",   "Oracle Database Secret Engine"),
+    (["ldap", "active directory", "openldap"],             "LDAP credentials",        "LDAP Secret Engine"),
+    (["api key", "api keys", "static", "password",
+      "token", "kv", "config", "app secret"],              "Static credentials",      "KV Secret Engine"),
 ]
-UNSUPPORTED = [
-    "mysql","postgres","postgresql","mongodb","redis","pki","tls certificate",
-    "ssh secret","oidc","jwt auth","azure ad","azure auth","gcp auth",
-    "transit","totp","rabbitmq","consul","cassandra",
+UNSUPPORTED_KEYWORDS = [
+    "mysql", "postgres", "postgresql", "mongodb", "redis", "pki",
+    "tls certificate", "ssh secret", "oidc", "jwt auth", "azure ad",
+    "azure auth", "gcp auth", "transit", "totp", "rabbitmq", "cassandra",
 ]
-CONFIRM_WORDS = ["yes","correct","confirm","looks good","that's right","go ahead",
-                 "proceed","confirmed","ok","okay","sure","yep","yup","approved"]
-INFO_WORDS    = ["what is","what are","how does","how do","explain","tell me about",
-                 "describe","difference between","what does"]
-TROUBLE_WORDS = ["error","failing","failed","not working","permission denied","invalid",
-                 "expired","cannot","can't","unable","broken","issue","problem","troubleshoot"]
+ENV_MAP = [
+    (["production", "prod"],                "prod"),
+    (["development", "dev"],                "dev"),
+    (["quality assurance", "testing", "qa"],"qa"),
+    (["staging", "stage"],                  "staging"),
+    (["uat"],                               "uat"),
+]
+GREETING_TRIGGERS = [
+    "hi", "hello", "hey", "what can you do", "what do you do",
+    "who are you", "help me", "how can you help", "get started",
+    "i need help", "what is this tool", "what are you",
+]
+INFO_TRIGGERS = [
+    "what is", "what are", "how does", "how do", "explain",
+    "tell me about", "describe", "difference between", "what does",
+]
+TROUBLE_TRIGGERS = [
+    "error", "failing", "failed", "not working", "permission denied",
+    "invalid", "expired", "cannot", "can\'t", "unable", "broken",
+    "issue with", "problem with", "troubleshoot",
+]
+ONBOARDING_TRIGGERS = [
+    "my app", "my application", "our app", "our application",
+    "i have a", "we have a", "i need to onboard", "onboard my",
+    "runs on", "running on", "deployed on", "hosted on",
+    "needs to read", "needs vault", "needs secrets", "needs credentials",
+    "java", "python", "node", "spring", "microservice", "batch job",
+    "service needs", "integrate with vault",
+]
+CONFIRM_WORDS = [
+    "yes", "correct", "confirm", "looks good", "that\'s right",
+    "go ahead", "proceed", "confirmed", "ok", "okay", "sure",
+    "yep", "yup", "approved", "yes confirm", "yes that\'s correct",
+]
+SENSITIVE_PATTERNS = [
+    r'password\s*[:=]\s*\S+',
+    r'passwd\s*[:=]\s*\S+',
+    r'token\s*[:=]\s*\S+',
+    r'api[_-]?key\s*[:=]\s*\S+',
+    r'username\s*[:=]\s*\S+',
+    r'pwd\s*[:=]\s*\S+',
+]
 
-def detect(text):
-    t = text.lower()
+# ── Helper functions ───────────────────────────────────────────────────────────
+def detect(turns):
+    """Detect platform and secret type from list of user messages."""
     plat = auth = stype = eng = None
-    for kws, pl, am in PLATFORM_MAP:
-        if any(k in t for k in kws):
-            plat, auth = pl, am
-            break
-    for kws, sl, se in SECRET_MAP:
-        if any(k in t for k in kws):
-            stype, eng = sl, se
+    for text in turns:
+        t = text.lower()
+        if not plat:
+            for kws, pl, am in PLATFORM_MAP:
+                if any(k in t for k in kws):
+                    plat, auth = pl, am
+                    break
+        if not stype:
+            for kws, sl, se in SECRET_MAP:
+                if any(k in t for k in kws):
+                    stype, eng = sl, se
+                    break
+        if plat and stype:
             break
     return plat, auth, stype, eng
 
-def is_unsupported(text):
+def get_env(text):
     t = text.lower()
-    return any(k in t for k in UNSUPPORTED)
-
-def is_info(text):
-    t = text.lower()
-    return any(k in t for k in INFO_WORDS)
-
-def is_trouble(text):
-    t = text.lower()
-    return any(k in t for k in TROUBLE_WORDS)
-
-def is_confirm(text):
-    t = text.strip().lower()
-    return any(t == k or t.startswith(k) for k in CONFIRM_WORDS)
-
-def extract_env(text):
-    t = text.lower()
-    for e in ["production","prod","staging","qa","dev","development","test","uat"]:
-        if e in t:
-            return e
+    for keywords, label in ENV_MAP:
+        if any(k in t for k in keywords):
+            return label
     return None
 
-def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
+def has(text, triggers):
+    t = text.strip().lower()
+    return any(k in t for k in triggers)
 
-def ask_llm(prompt_text):
-    return StrOutputParser().invoke(llm.invoke(prompt_text))
+def is_greeting(msg):
+    t = msg.strip().lower()
+    return len(t.split()) <= 8 and has(t, GREETING_TRIGGERS)
 
-def build_history(history):
+def is_confirm(msg):
+    t = msg.strip().lower()
+    return any(t == k or t.startswith(k) for k in CONFIRM_WORDS)
+
+def is_sensitive(msg):
+    return any(re.search(p, msg, re.IGNORECASE) for p in SENSITIVE_PATTERNS)
+
+def get_docs(query):
+    docs = retriever.invoke(query)
+    return "\n\n".join(d.page_content for d in docs)
+
+def ask(prompt):
+    return StrOutputParser().invoke(llm.invoke(prompt))
+
+def history_str(history):
     return "".join(f"User: {t['user']}\nAssistant: {t['assistant']}\n\n" for t in history)
 
-# ── Prompt builders ────────────────────────────────────────────────────────────
+# ── Static responses (no LLM needed) ──────────────────────────────────────────
+WELCOME = """Hello! I'm the Vault Self-Service Onboarding Assistant.
 
-HEADER = """You are an enterprise HashiCorp Vault Self-Service Onboarding Assistant.
-You behave like a senior Vault onboarding engineer helping teams CHECK if they can onboard to Vault.
-Answer ONLY from the documentation context provided. Be concise and professional.
+I help application teams check readiness for onboarding into HashiCorp Vault.
 
-SUPPORTED AUTH METHODS: AppRole Auth, AWS IAM Auth, Kubernetes Auth, GitHub Auth.
-SUPPORTED SECRET ENGINES: KV Secret Engine, Oracle Database Secret Engine, LDAP Secret Engine.
+What I can do:
+- Onboarding Guidance: Describe your app and I'll recommend the right auth method and secret engine, then walk you through the steps.
+- Answer Questions: Ask me anything — "What is AppRole?", "How does Kubernetes auth work?"
+- Troubleshoot: Describe an error and I'll diagnose it.
 
-CRITICAL RULE - NEVER ask for or request any of the following:
-- Passwords, secrets, tokens, or credentials of any kind
-- Usernames or service account passwords
-- Database connection strings with real credentials
-- API keys or private keys
-- Any actual sensitive values
+Supported Auth Methods: AppRole Auth | AWS IAM Auth | Kubernetes Auth | GitHub Auth
+Supported Secret Engines: KV Secret Engine | Oracle Database Secret Engine | LDAP Secret Engine
 
-This tool is a READINESS CHECKER only. It helps users understand:
-1. Which Vault auth method and secret engine they need
-2. What they need to PREPARE before onboarding
-3. What the onboarding steps will look like
-4. What inputs the Vault Ops team will need from them (field names only, NOT values)
+To get started, describe your use case. Example:
+"My Java app runs on a VM and needs Oracle DB credentials." """
 
-Always clarify: "Do not share actual credentials here. This assistant helps you prepare for onboarding, not collect sensitive data."
-"""
+UNSUPPORTED = "This use case is not currently supported by the Vault self-service platform. A Vault engineer will get in touch with you shortly."
 
-def prompt_info(context, history, question):
-    return f"""{HEADER}
-The user is asking an informational question. Answer it clearly and concisely from the context.
-Do NOT use onboarding plan format. Do NOT list Required Inputs. Just explain it well.
+SENSITIVE_WARNING = """⚠️ Please do not share actual passwords, tokens, or credentials here.
 
-{build_history(history)}---
-Context:
-{context}
+This assistant is a readiness checker — it tells you WHAT to prepare and HOW to onboard.
+Actual sensitive values should go directly to the Vault Ops team via a secure channel.
 
-User: {question}
+Please rephrase without any credential values."""
+
+# ── LLM Prompts ────────────────────────────────────────────────────────────────
+SYSTEM = """You are an enterprise HashiCorp Vault Self-Service Onboarding Assistant.
+Behave like a senior Vault onboarding engineer. Be concise and professional.
+Answer ONLY from the documentation context provided.
+NEVER ask for or accept passwords, tokens, usernames, or any actual credential values.
+This tool is a readiness checker — it tells users what to prepare, not collects secrets."""
+
+def p_info(ctx, hist, q):
+    return f"""{SYSTEM}
+
+The user is asking an informational question. Answer clearly and concisely from the context.
+Do NOT use onboarding plan format.
+
+{history_str(hist)}---
+Context: {ctx}
+
+User: {q}
 Answer:"""
 
-def prompt_trouble(context, history, question):
-    return f"""{HEADER}
-The user has a problem. Diagnose it and give the exact fix from the context.
-State the likely cause first, then the fix. Do NOT use onboarding plan format.
+def p_trouble(ctx, hist, q):
+    return f"""{SYSTEM}
 
-{build_history(history)}---
-Context:
-{context}
+The user has a Vault problem. State the likely cause then give the exact fix from context.
+Do NOT use onboarding plan format.
 
-User: {question}
+{history_str(hist)}---
+Context: {ctx}
+
+User: {q}
 Answer:"""
 
-def prompt_intake(context, history, question, detected):
+def p_intake(ctx, hist, q, plat, auth, stype, eng, missing):
     known = ""
-    if detected:
-        known = f"\nALREADY DETECTED FROM USER INPUT:\n{detected}\n"
-    return f"""{HEADER}{known}
-The user wants to onboard an application into Vault.
+    if plat:  known += f"- Platform detected: {plat} -> Use {auth}\n"
+    if stype: known += f"- Secret type detected: {stype} -> Use {eng}\n"
 
-Your response must do TWO things:
-1. Briefly confirm what you detected (1-2 sentences explaining WHY that auth method and secret engine are correct for their use case).
-2. Ask ONLY for what is still missing: application name, environment (dev/qa/prod), and Vault namespace.
-   Ask maximum 2 questions in a single short paragraph.
+    return f"""{SYSTEM}
 
-Do NOT ask about platform or secret type — those are already detected above.
-Do NOT generate onboarding steps yet.
+{"ALREADY DETECTED (do NOT ask about these):" + chr(10) + known if known else ""}
+STILL NEEDED (ask ONLY for these, nothing else): {", ".join(missing) if missing else "all collected"}
 
-{build_history(history)}---
-Context:
-{context}
+Rules:
+1. If platform is known, confirm it in one sentence using the EXACT explanation below:
+   - VM/Bare Metal  -> "Since your app runs on a VM, we will use AppRole Auth — designed for server-based apps authenticating with role_id and secret_id."
+   - AWS            -> "Since your app runs on AWS EC2, we will use AWS IAM Auth — the instance authenticates using its attached IAM role."
+   - Kubernetes     -> "Since your app runs in Kubernetes, we will use Kubernetes Auth — pods authenticate via service account tokens."
+   - GitHub Actions -> "Since this is a GitHub Actions workflow, we will use GitHub Auth — the pipeline authenticates using its GitHub token."
+2. Ask ONLY for items listed in STILL NEEDED. Maximum 2 questions. One question per missing item.
+3. Do NOT generate onboarding steps yet. Do NOT ask for passwords or credentials.
 
-User: {question}
+{history_str(hist)}---
+Context: {ctx}
+
+User: {q}
 Answer:"""
 
-def prompt_summary(context, history, question, plat, auth, stype, eng, env):
-    return f"""{HEADER}
-You have collected enough information. Produce ONLY the summary below. Nothing else.
+def p_summary(ctx, hist, q, plat, auth, stype, eng, env, appname, namespace):
+    return f"""{SYSTEM}
 
-STOP after the confirmation line. Do NOT add any questions. Do NOT ask for Oracle details.
-Do NOT ask for any inputs. Do NOT generate steps. Just the summary and the confirmation line.
+All required information has been collected. Output ONLY this summary, then stop.
+Do NOT add any questions or steps after the confirmation line.
 
-Write exactly this (fill in the blanks from the conversation):
+Write exactly:
 
 Based on the information provided, here is the understood onboarding use case:
-- Application: <name from conversation>
-- Platform: {plat or "as described"}
-- Authentication Method: {auth or "as discussed"}
-- Secret Engine: {eng or "as discussed"}
-- Secret Type: {stype or "as discussed"}
-- Environment: {env or "from conversation"}
-- Namespace: <namespace from conversation>
+- Application: {appname}
+- Platform: {plat}
+- Authentication Method: {auth}
+- Secret Engine: {eng}
+- Secret Type: {stype}
+- Environment: {env}
+- Namespace: {namespace}
 
 Please confirm if this is correct, or let me know what needs to change.
 
-STOP HERE. Do not write anything after the confirmation line.
-
-{build_history(history)}---
-Context:
-{context}
-
-User: {question}
+{history_str(hist)}---
+User: {q}
 Answer:"""
 
-def prompt_plan(context, history, plat, auth, stype, eng, env):
-    return f"""{HEADER}
-The user confirmed their onboarding details. Generate a complete onboarding readiness plan.
+def p_plan(ctx, hist, plat, auth, stype, eng, env):
+    wa = WHY_AUTH.get(auth, f"{auth} is the recommended method for this platform.")
+    we = WHY_ENGINE.get(eng, f"{eng} is the recommended engine for this secret type.")
+    return f"""{SYSTEM}
 
-IMPORTANT: This plan must tell users WHAT to prepare, not ask for actual values.
-Never request real passwords, usernames, or credentials.
-Frame required inputs as "what you need to have ready" — field names and descriptions only.
+Generate a complete Vault onboarding readiness plan for the confirmed details below.
+Tell users WHAT to prepare — never ask for actual credential values.
 
-Confirmed details:
-- Platform: {plat or "as discussed"}
-- Authentication Method: {auth or "as discussed"}
-- Secret Engine: {eng or "as discussed"}
-- Secret Type: {stype or "as discussed"}
-- Environment: {env or "as discussed"}
+Confirmed:
+- Platform: {plat}
+- Authentication Method: {auth}
+- Secret Engine: {eng}
+- Secret Type: {stype}
+- Environment: {env}
 
 Use this EXACT format:
 
-Recommended Authentication Method: {auth or "<method>"}
-Recommended Secret Engine: {eng or "<engine>"}
+Recommended Authentication Method: {auth}
+Recommended Secret Engine: {eng}
 
-Why this recommendation:
-<1-2 sentences explaining why this auth method and secret engine fit their use case>
+Why This Recommendation:
+{wa} {we}
 
 Onboarding Plan:
-1. <step>
-2. <step>
-3. <step>
-4. <step>
-5. <step>
+1. <specific step for {auth}>
+2. <specific step>
+3. <specific step for {eng}>
+4. <specific step>
+5. <specific step>
 
-What You Need to Prepare (do NOT share actual values here — provide these to the Vault Ops team via secure channel):
-- Application name
-- Target environment (dev / qa / prod)
+What You Need to Prepare (provide these to the Vault Ops team — do NOT share actual values here):
+- Application name and target environment
 - Vault namespace
-- <secret-engine specific items as field names only, e.g. "Oracle DB hostname and port" NOT the actual value>
-- Required access level (read-only / read-write)
+- {"Oracle DB hostname, port, and service name (no passwords)" if "Oracle" in eng else "Secret path and key names" if "KV" in eng else "LDAP server URL and service account DN (no passwords)"}
+- Required access level (read-only or read-write)
 
 Vault Policy Example:
-path "<secret-path>" {{ capabilities = ["read"] }}
+path "{"oracle/creds" if "Oracle" in eng else "ldap/static-cred" if "LDAP" in eng else "kv/data"}/<app-name>/*" {{{{ capabilities = ["read"] }}}}
 
 Best Practices:
-- Use least privilege access
-- Rotate credentials regularly
-- Separate production and non-production environments
+- Use least privilege — grant read-only unless write is required
+- Separate dev / qa / prod with different Vault roles and policies
 - Never hardcode credentials in application source code
-- Provide sensitive values only to the Vault Ops team via secure channel, not in this chat
+- Rotate secret_id regularly (AppRole) or let Vault handle rotation (Oracle/LDAP engines)
 
 Validation Checklist:
-- Auth method configured and tested
-- Policy created and attached to role
-- Secret path created with correct permissions
-- Application retrieves secrets successfully in non-production first
+- [ ] Auth method configured and tested in non-prod first
+- [ ] Vault policy created and attached to role
+- [ ] Secret path created and verified
+- [ ] Application successfully retrieves secrets
 
-Note: This assistant is a readiness checker. Do not share actual passwords, usernames, or credentials here.
-To proceed with onboarding, raise a request with the Vault Ops team using the details above.
+Note: This is a readiness check. Share actual credential values only with the Vault Ops team via secure channel.
 
-{build_history(history)}---
-Context:
-{context}
+{history_str(hist)}---
+Context: {ctx}
 
-Generate the plan now.
 Answer:"""
 
-# ── Routes ─────────────────────────────────────────────────────────────────────
+# ── Route ──────────────────────────────────────────────────────────────────────
 @app.route("/")
 def index():
     return render_template("index.html")
 
-@app.route("/auth")
-def auth():
-    return render_template("auth.html")
-
-@app.route("/engines")
-def engines():
-    return render_template("engines.html")
-
-@app.route("/help")
-def help():
-    return render_template("help.html")
-
 @app.route("/chat", methods=["POST"])
 def chat():
-    data        = request.get_json()
-    user_msg    = data.get("message", "").strip()
-    history     = data.get("history", [])
+    data     = request.get_json()
+    msg      = data.get("message", "").strip()
+    history  = data.get("history", [])
 
-    if not user_msg:
+    if not msg:
         return jsonify({"response": "Please enter a message."})
 
-    # ── Sensitive data guard ───────────────────────────────────────────────────
-    import re
-    sensitive_patterns = [
-        r'password\s*[:=]\s*\S+',
-        r'passwd\s*[:=]\s*\S+',
-        r'secret\s*[:=]\s*\S+',
-        r'token\s*[:=]\s*\S+',
-        r'api[_-]?key\s*[:=]\s*\S+',
-        r'username\s*[:=]\s*\S+',
-        r'user\s*[:=]\s*\S+',
-        r'pwd\s*[:=]\s*\S+',
+    # ── 1. Greeting ────────────────────────────────────────────────────────────
+    if is_greeting(msg) and not history:
+        return jsonify({"response": WELCOME})
+
+    # ── 2. Sensitive data guard ────────────────────────────────────────────────
+    if is_sensitive(msg):
+        return jsonify({"response": SENSITIVE_WARNING})
+
+    # ── 3. Unsupported ─────────────────────────────────────────────────────────
+    if has(msg, UNSUPPORTED_KEYWORDS) and not has(msg, INFO_TRIGGERS) and not has(msg, TROUBLE_TRIGGERS):
+        return jsonify({"response": UNSUPPORTED})
+
+    # Gather all context
+    all_turns = [t["user"] for t in history] + [msg]
+    all_text  = " ".join(all_turns)
+    plat, auth, stype, eng = detect(all_turns)
+    env = get_env(all_text)
+
+    # Extract app name and namespace from full conversation text
+    appname   = None
+    namespace = None
+    name_patterns = [
+        r'(?:application|app)\s+(?:name\s+)?is\s+([\w-]+)',
+        r'named?\s+([\w-]+)',
+        r'called\s+([\w-]+)',
+        r'name\s*[:\/]\s*([\w-]+)',
     ]
-    if any(re.search(p, user_msg, re.IGNORECASE) for p in sensitive_patterns):
-        return jsonify({"response": (
-            "⚠️ It looks like you may be sharing actual credentials or sensitive values.\n\n"
-            "Please do not share real passwords, usernames, tokens, or secrets in this chat.\n\n"
-            "This assistant is a Vault onboarding readiness checker — it helps you understand "
-            "WHAT to prepare and HOW to onboard. Actual sensitive values should be provided "
-            "directly to the Vault Ops team via a secure channel.\n\n"
-            "Please rephrase your message without any actual credential values."
-        )})
+    ns_patterns = [
+        r'namespace\s+is\s+([\w-]+)',
+        r'namespace\s*[:\/]\s*([\w-]+)',
+        r'ns\s*[:\/]\s*([\w-]+)',
+    ]
+    for p in name_patterns:
+        m = re.search(p, all_text, re.IGNORECASE)
+        if m:
+            appname = m.group(1)
+            break
+    for p in ns_patterns:
+        m = re.search(p, all_text, re.IGNORECASE)
+        if m:
+            namespace = m.group(1)
+            break
 
-    # Collect all user text across session for detection
-    all_user_text = user_msg + " " + " ".join(t["user"] for t in history)
-    all_text      = all_user_text + " " + " ".join(t["assistant"] for t in history)
+    ctx = get_docs(msg)
 
-    plat, auth, stype, eng = detect(all_user_text)
-    env = extract_env(all_text)
+    # ── 4. Informational ───────────────────────────────────────────────────────
+    if has(msg, INFO_TRIGGERS) and not has(msg, ONBOARDING_TRIGGERS):
+        return jsonify({"response": ask(p_info(ctx, history, msg))})
 
-    docs    = retriever.invoke(user_msg)
-    context = format_docs(docs)
+    # ── 5. Troubleshooting ─────────────────────────────────────────────────────
+    if has(msg, TROUBLE_TRIGGERS):
+        return jsonify({"response": ask(p_trouble(ctx, history, msg))})
 
-    # 1. Unsupported
-    if is_unsupported(user_msg) and not is_info(user_msg) and not is_trouble(user_msg):
-        return jsonify({"response": "This use case is not currently supported by the Vault self-service platform. A Vault engineer will get in touch with you shortly."})
+    # ── 6. Confirmation → generate plan ───────────────────────────────────────
+    if is_confirm(msg) and history:
+        return jsonify({"response": ask(p_plan(ctx, history, plat, auth, stype, eng, env))})
 
-    # 2. Informational
-    if is_info(user_msg) and not any(k in user_msg.lower() for k in ["onboard", "integrate", "set up", "setup"]):
-        return jsonify({"response": ask_llm(prompt_info(context, history, user_msg))})
+    # ── 7. All collected → summary ─────────────────────────────────────────────
+    if plat and stype and env and appname and namespace and history:
+        return jsonify({"response": ask(p_summary(ctx, history, msg, plat, auth, stype, eng, env, appname, namespace))})
 
-    # 3. Troubleshooting
-    if is_trouble(user_msg):
-        return jsonify({"response": ask_llm(prompt_trouble(context, history, user_msg))})
+    # ── 8. Still collecting → intake ──────────────────────────────────────────
+    missing = []
+    if not stype:     missing.append("secret type (Oracle DB credentials / API keys / LDAP credentials)")
+    if not appname:   missing.append("application name")
+    if not env:       missing.append("environment (dev / qa / prod)")
+    if not namespace: missing.append("Vault namespace")
 
-    # 4. Confirmation -> generate plan
-    if is_confirm(user_msg) and len(history) >= 1:
-        return jsonify({"response": ask_llm(prompt_plan(context, history, plat, auth, stype, eng, env))})
+    if has(msg, ONBOARDING_TRIGGERS) or plat or stype or history:
+        return jsonify({"response": ask(p_intake(ctx, history, msg, plat, auth, stype, eng, missing))})
 
-    # 5. Onboarding intake / summary
-    known_parts = []
-    if plat and auth:  known_parts.append(f"Platform: {plat} -> Auth Method: {auth}")
-    if stype and eng:  known_parts.append(f"Secret Type: {stype} -> Secret Engine: {eng}")
-    if env:            known_parts.append(f"Environment: {env}")
-    detected_str = "\n".join(known_parts) if known_parts else None
-
-    # Only go to summary if we have answers across multiple turns (not first message)
-    # and we have env + namespace signals from history
-    has_env      = env is not None
-    has_namespace = any(k in all_text.lower() for k in ["namespace", "ns ", " ns="])
-    is_first_msg  = len(history) == 0
-
-    if plat and stype and has_env and has_namespace and not is_first_msg:
-        return jsonify({"response": ask_llm(prompt_summary(context, history, user_msg, plat, auth, stype, eng, env))})
-
-    # Still collecting — go to intake
-    return jsonify({"response": ask_llm(prompt_intake(context, history, user_msg, detected_str))})
+    # ── 9. Fallback ────────────────────────────────────────────────────────────
+    return jsonify({"response": (
+        "I can help you onboard your application into Vault, answer questions, or troubleshoot issues.\n\n"
+        "To get started, describe your use case. Example:\n"
+        "My Java app runs on a VM and needs Oracle DB credentials."
+    )})
 
 if __name__ == "__main__":
     app.run(debug=True, port=5000)
