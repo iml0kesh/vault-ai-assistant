@@ -1,50 +1,35 @@
+"""
+Run this once to build the vector database from docs/.
+Re-run whenever you add or update docs.
+Usage: python ingest.py
+"""
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-import os
+from config.settings import EMBED_MODEL, VECTOR_DB_PATH, DOCS_PATH
+import shutil, os
 
-# ── Load all .txt docs from docs/ folder ──────────────────────────────────────
 print("Loading documents...")
-loader = DirectoryLoader(
-    "docs",
-    glob="**/*.txt",
-    loader_cls=TextLoader
-)
+loader = DirectoryLoader(DOCS_PATH, glob="**/*.txt", loader_cls=TextLoader)
 documents = loader.load()
-print(f"Loaded {len(documents)} documents")
+print(f"  Loaded {len(documents)} documents")
 
-# ── Split into chunks ─────────────────────────────────────────────────────────
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=400,
-    chunk_overlap=80
-)
-chunks = text_splitter.split_documents(documents)
-print(f"Split into {len(chunks)} chunks")
+splitter = RecursiveCharacterTextSplitter(chunk_size=400, chunk_overlap=80)
+chunks   = splitter.split_documents(documents)
+print(f"  Split into {len(chunks)} chunks")
 
-# ── Embeddings ────────────────────────────────────────────────────────────────
 print("Loading embedding model...")
-embeddings = HuggingFaceEmbeddings(
-    model_name="sentence-transformers/all-MiniLM-L6-v2"
-)
+embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
 
-# ── Build Vector DB ───────────────────────────────────────────────────────────
+if os.path.exists(VECTOR_DB_PATH):
+    shutil.rmtree(VECTOR_DB_PATH)
+    print("  Cleared old vector database")
+
 print("Building vector database...")
+Chroma.from_documents(documents=chunks, embedding=embeddings, persist_directory=VECTOR_DB_PATH)
 
-# Remove old vector_db if it exists (fresh rebuild)
-import shutil
-if os.path.exists("vector_db"):
-    shutil.rmtree("vector_db")
-    print("Removed old vector database")
-
-vectordb = Chroma.from_documents(
-    documents=chunks,
-    embedding=embeddings,
-    persist_directory="vector_db"
-)
-
-print("=" * 50)
-print(f"Vector database created successfully!")
-print(f"Total chunks indexed: {len(chunks)}")
-print("Run app.py to start the assistant.")
-print("=" * 50)
+print(f"\n{'='*40}")
+print(f"  Done! {len(chunks)} chunks indexed.")
+print(f"  Run: python run.py")
+print(f"{'='*40}\n")

@@ -4,6 +4,7 @@ langchain-core
 langchain-chroma
 langchain-huggingface
 langchain-ollama
+langchain-community
 langchain-text-splitters
 chromadb
 sentence-transformers
